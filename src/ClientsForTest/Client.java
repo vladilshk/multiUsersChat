@@ -16,7 +16,6 @@ public class Client {
     InputStream inputStream;
     OutputStream outputStream;
 
-
     public void connection() throws IOException {
         socket = connect();
         outputStream = socket.getOutputStream();
@@ -31,8 +30,41 @@ public class Client {
             if (message.startsWith("You are successfully connected")) {
                 System.out.println("hello");
                 break;
+            } else {
+                System.out.println(message);
             }
-            else {
+        }
+        System.out.println("You have successfully connected.");
+        startMessaging();
+    }
+
+    public void connectionWithPasw() throws IOException {
+        socket = connect();
+        outputStream = socket.getOutputStream();
+        inputStream = socket.getInputStream();
+        while (true) {
+            byte[] buffer = new byte[128];
+            this.name = setName();
+            outputStream.write((name.length() + "/" + name).getBytes());
+            inputStream.read(buffer);
+            String message = new String(buffer);
+            if (message.startsWith("Ok")) {
+                break;
+            }
+        }
+        while (true) {
+            Scanner scanner = new Scanner(System.in);
+            byte[] buffer = new byte[128];
+            System.out.println("Input password");
+            String password = scanner.nextLine();
+            outputStream.write((password.length() + "/" + password).getBytes());
+            buffer = new byte[64];
+            inputStream.read(buffer);
+            String message = new String(buffer);
+            message = messageDecoding(message);
+            if (message.startsWith("Ok")) {
+                break;
+            } else {
                 System.out.println(message);
             }
         }
@@ -41,22 +73,21 @@ public class Client {
 
     }
 
-    public String setName(){
+    public String setName() {
         while (true) {
             Scanner scanner = new Scanner(System.in);
             System.out.println("Input your name: ");
             String userName = scanner.nextLine();
-            if (userName.contains(" ")){
+            if (userName.contains(" ")) {
                 System.out.println("Username shouldn't contain ' '");
-            }
-            else {
+            } else {
                 return userName;
             }
         }
     }
 
-    public Socket connect(){
-        while (true){
+    public Socket connect() {
+        while (true) {
             try {
                 Scanner scanner = new Scanner(System.in);
                 System.out.println("Input server IP: ");
@@ -65,25 +96,25 @@ public class Client {
                 int port = scanner.nextInt();
                 Socket clientSocket = new Socket(host, port);
                 return clientSocket;
-            } catch (Exception e){
+            } catch (Exception e) {
                 System.out.println("Wrong IP or port. Try again");
             }
         }
     }
 
 
-    public void startMessaging(){
+    public void startMessaging() {
         Thread sendThread = new Thread() {
             @Override
             public void run() {
-                while (true){
+                while (true) {
                     send();
                 }
             }
         };
-        Thread receiveThread = new Thread(){
-            public void run(){
-                while (true){
+        Thread receiveThread = new Thread() {
+            public void run() {
+                while (true) {
                     receive();
                 }
             }
@@ -97,17 +128,29 @@ public class Client {
         }
     }
 
-    public void send()  {
+    public void send() {
         try {
             Scanner scanner = new Scanner(System.in);
             String message = scanner.nextLine();
-            message = codeMessage(message);
+            if (message.startsWith("@")) {
+                message = codeCommand(message);
+            } else {
+                message = codeMessage(message);
+            }
             byte[] buffer = message.getBytes();
             outputStream = socket.getOutputStream();
             outputStream.write(buffer);
             outputStream.flush();
+            if (messageDecoding(message).startsWith("@quit")) {
+                socket.close();
+                System.out.println("You have disconnected.");
+                Thread.sleep(1000);
+                System.exit(0);
+            }
         } catch (IOException e) {
             throw new RuntimeException(e);
+        } catch (InterruptedException e) {
+            //throw new RuntimeException(e);
         }
     }
 
@@ -119,15 +162,26 @@ public class Client {
             String message = new String(buffer);
             message = messageDecoding(message);
             System.out.println(message);
-        } catch (IOException e){
+        } catch (IOException e) {
 
         }
     }
 
-    public String codeMessage(String message){
+    public String codeMessage(String message) {
         StringBuilder editedMessage = new StringBuilder();
 
-        if (message.startsWith("@sendUser ")){
+        editedMessage.append(message.length() + name.length() + 2);
+        editedMessage.append('/');
+        editedMessage.append(name + ": ");
+        editedMessage.append(message);
+
+        return editedMessage.toString();
+    }
+
+    public String codeCommand(String message) {
+        StringBuilder editedMessage = new StringBuilder();
+
+        if (message.startsWith("@sendUser ")) {
             editedMessage.append(message.length() + name.length() + 2);
             editedMessage.append('/');
             editedMessage.append("@sendUser ");
@@ -139,17 +193,17 @@ public class Client {
             idx += 2;
             editedMessage.append(' ');
             editedMessage.append(name + ": ");
-            for(int i = idx; i < message.length(); i++){
+            for (int i = idx; i < message.length(); i++) {
                 editedMessage.append(message.charAt(i));
             }
         } else {
-            editedMessage.append(message.length() + name.length() + 2);
-            editedMessage.append('/');
-            editedMessage.append(name + ": ");
+            editedMessage.append(message.length());
+            editedMessage.append("/");
             editedMessage.append(message);
         }
         return editedMessage.toString();
     }
+
 
     public static String messageDecoding(String message) {
         StringBuilder decodedMessage = new StringBuilder();

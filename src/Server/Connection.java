@@ -3,92 +3,98 @@ package Server;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.io.OutputStreamWriter;
 import java.net.Socket;
-import java.util.Random;
-import java.util.Scanner;
 
 public class Connection {
+    String name;
     Socket socket;
     OutputStream outputStream;
     InputStream inputStream;
 
-    public Connection(Socket socket) throws IOException {
+    public Connection(Socket socket, String name) throws IOException {
+        this.name = name;
         this.socket = socket;
         outputStream = socket.getOutputStream();
         inputStream = socket.getInputStream();
         Thread thread = new Thread() {
             @Override
             public void run() {
-                startListening();
-            }
-        };
-        thread.start();
-    }
-
-    public void startListening(){
-        Thread receiveThread = new Thread(){
-            public void run(){
-                while (true){
-                    serverReceive();
+                //startListening();
+                while (true) {
+                    try {
+                        while (serverReceive()) ;
+                        outputStream.close();
+                        inputStream.close();
+                        socket.close();
+                        Server.clients.remove(name);
+                        System.out.println(name + "disconected");
+                        for (String key : Server.clients.keySet()) {
+                            System.out.println(key);
+                        }
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }
+                    break;
                 }
             }
         };
-        receiveThread.start();
-        try {
-            receiveThread.join();
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
+        thread.start();
+
     }
 
-    public void serverReceive(){
+    public boolean serverReceive() {
         try {
             byte[] buffer = new byte[1024];
             inputStream = socket.getInputStream();
             inputStream.read(buffer);
             String message = new String(buffer);
             message = messageDecoding(message);
-
-            if(!message.startsWith("@sendUser ")){
-                serverSend(message);
-            }else {
+            if (message.startsWith("@quit")) {
+                for (String key : Server.clients.keySet()) {
+                    if (Server.clients.get(key).equals(this)) {
+                        serverSend(key + " was disconnected.");
+                    }
+                }
+                return false;
+            } else if (message.startsWith("@sendUser ")) {
                 sendToCurrentUser(message);
+            } else {
+                serverSend(message);
             }
-        } catch (IOException e){
+        } catch (IOException e) {
 
         }
+        return true;
     }
 
-    public void serverSend(String message){
+    public void serverSend(String message) {
         message = message.length() + "/" + message;
-        System.out.println(message);
-        for(Connection con: Server.clients.values()){
-            if(!this.equals(con))
+        for (Connection con : Server.clients.values()) {
+            if (!this.equals(con))
                 con.send(message);
         }
     }
 
-    public void sendToCurrentUser(String message){
+    public void sendToCurrentUser(String message) {
         StringBuilder name = new StringBuilder();
-        for(int i = 10; i < message.indexOf(' ', 10); i++){
+        for (int i = 10; i < message.indexOf(' ', 10); i++) {
             name.append(message.charAt(i));
         }
-        if(Server.clients.containsKey(name.toString())){
+        if (Server.clients.containsKey(name.toString())) {
             StringBuilder editedMessage = new StringBuilder();
             editedMessage.append(message.length() - 11 - name.length());
             editedMessage.append('/');
-            for(int i = message.indexOf(' ', 10) + 1; i < message.length() ; i++){
+            for (int i = message.indexOf(' ', 10) + 1; i < message.length(); i++) {
                 editedMessage.append(message.charAt(i));
             }
             System.out.println(editedMessage.toString());
             Server.clients.get(name.toString()).send(editedMessage.toString());
-        }else {
-            send("Error: there is no user " + name.toString() + " in server");
+        } else {
+            //send(messageDecoding("Error: there is no user " + name.toString() + " in server"));
         }
     }
 
-    public void send(String message)  {
+    public void send(String message) {
         try {
             outputStream = socket.getOutputStream();
             byte[] buffer = message.getBytes();
@@ -99,7 +105,8 @@ public class Connection {
         }
     }
 
-    public synchronized static  String messageDecoding(String message) {
+    public synchronized static String messageDecoding(String message) {
+        System.out.println(message);
         StringBuilder decodedMessage = new StringBuilder();
         int idx = 0;
         String str = new String();
